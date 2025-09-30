@@ -1,11 +1,14 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+import os
 import random
+import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-import os
+
+logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 
