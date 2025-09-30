@@ -1,26 +1,21 @@
 # -*- coding: utf-8 -*-
-import os
 import random
-import logging
-from aiogram import Bot, Dispatcher, types
+import os
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-
-logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+dp = Dispatcher(storage=storage)
 
-# FSM для управления состоянием пользователя
 class UserState(StatesGroup):
     waiting_for_captcha = State()
 
-# Текст правил
 RULES_TEXT = """В нашей супергруппе 11 чатов, в каждом чате своя тематика:
 • Общий чат Субаристов – приветствуем новичков и не только, общение обо всём.
 • Автоспорт – вся информация о мероприятиях и событиях автоспорта, общение на эту тему.    
@@ -55,90 +50,71 @@ RULES_TEXT = """В нашей супергруппе 11 чатов, в кажд�
 
 Приветствуется: позитивное общение, юмор, желание помочь ближнему и прочие приятности."""
 
-
-# Обработчик команды /start
-@dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message, state: FSMContext):
-    await state.finish()  # Сбрасываем состояние
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, state):
+    await state.clear()
     user_name = message.from_user.first_name
     text = f"Привет, {user_name} 👋\nЭто бот для входа в Subaru Club 74 ✨"
-    keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Подать заявку на вход", callback_data="apply")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Подать заявку на вход", callback_data="apply")]
+        ]
     )
-    await message.answer(text, reply_markup=keyboard)
+    await message.answer(text=text, reply_markup=keyboard)
 
-
-# Обработчик нажатия кнопки "Подать заявку на вход"
-@dp.callback_query_handler(lambda c: c.data == "apply")
-async def process_apply(callback_query: types.CallbackQuery, state: FSMContext):
-    await state.finish()
-    await bot.send_message(callback_query.from_user.id, RULES_TEXT)
-    
-    keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("С правилами ознакомлен и согласен", callback_data="rules_confirmed")
-    )
-    await bot.edit_message_reply_markup(
-        chat_id=callback_query.message.chat.id,
-        message_id=callback_query.message.message_id,
-        reply_markup=keyboard
+@dp.callback_query(F.data == "apply")
+async def process_apply(callback_query: types.CallbackQuery, state):
+    await state.clear()
+    await callback_query.message.answer(RULES_TEXT)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="С правилами ознакомлен и согласен", callback_data="rules_confirmed")]
+        ]
     )
     await callback_query.answer()
+    await callback_query.message.edit_reply_markup(reply_markup=keyboard)
 
-
-# Обработчик нажатия кнопки "С правилами ознакомлен и согласен"
-@dp.callback_query_handler(lambda c: c.data == "rules_confirmed")
-async def process_rules_confirmed(callback_query: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "rules_confirmed")
+async def process_rules_confirmed(callback_query: types.CallbackQuery, state):
     await callback_query.answer()
-    
     emojis = ['🌚', '🌝', '⭐️', '🌍', '🌞']
     random.shuffle(emojis)
-    keyboard = InlineKeyboardMarkup()
-    for emoji in emojis:
-        keyboard.add(InlineKeyboardButton(emoji, callback_data=f"captcha_{emoji}"))
-    
-    await bot.edit_message_text(
-        "Найди землю",
-        chat_id=callback_query.message.chat.id,
-        message_id=callback_query.message.message_id,
-        reply_markup=keyboard
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=emoji, callback_data=f"captcha_{emoji}")]
+            for emoji in emojis
+        ]
     )
-    await UserState.waiting_for_captcha.set()
+    await callback_query.message.edit_text("Найди землю", reply_markup=keyboard)
+    await state.set_state(UserState.waiting_for_captcha)
 
-
-# Обработчик нажатия на смайлик капчи
-@dp.callback_query_handler(lambda c: c.data.startswith("captcha_"), state=UserState.waiting_for_captcha)
-async def process_captcha(callback_query: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data.startswith("captcha_"), UserState.waiting_for_captcha)
+async def process_captcha(callback_query: types.CallbackQuery, state):
     chosen_emoji = callback_query.data.split("captcha_")[1]
     await callback_query.answer()
 
     if chosen_emoji in ['🌚', '🌝', '⭐️', '🌞']:
-        # Неправильный выбор — возвращаемся к началу
         user_name = callback_query.from_user.first_name
         text = f"Привет, {user_name} 👋\nЭто бот для входа в Subaru Club 74 ✨"
-        keyboard = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("Подать заявку на вход", callback_data="apply")
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Подать заявку на вход", callback_data="apply")]
+            ]
         )
-        await bot.edit_message_text(
-            text=text,
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            reply_markup=keyboard
-        )
-        await state.finish()
+        await callback_query.message.edit_text(text=text, reply_markup=keyboard)
+        await state.clear()
     elif chosen_emoji == '🌍':
-        # Правильный выбор — ссылка на вступление
-        keyboard = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("Вступить в клуб", url="https://t.me/+nnwxw00kXDkwMTgy")
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Вступить в клуб", url="https://t.me/+nnwxw00kXDkwMTgy")]
+            ]
         )
-        await bot.edit_message_text(
-            "Вы успешно прошли проверку",
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            reply_markup=keyboard
-        )
-        await state.finish()
+        await callback_query.message.edit_text("Вы успешно прошли проверку", reply_markup=keyboard)
+        await state.clear()
 
+async def main():
+    await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    from aiogram import executor
-    executor.start_polling(dp, skip_updates=True)
+    import asyncio
+    asyncio.run(main())
