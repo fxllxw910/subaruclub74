@@ -1,0 +1,11 @@
+﻿services:
+  - type: web
+    name: subaru-club-bot
+    env: python
+    region: frankfurt  # или другой регион по желанию
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
