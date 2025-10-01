@@ -1,17 +1,34 @@
 # -*- coding: utf-8 -*-
-import random
 import os
+import threading
+import asyncio
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# === HTTP-сервер для "пробуждения" Replit ===
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_http_server():
+    server = HTTPServer(("0.0.0.0", 8080), KeepAliveHandler)
+    server.serve_forever()
+
+# Запускаем HTTP-сервер в фоне
+threading.Thread(target=run_http_server, daemon=True).start()
+# ==========================================
+
 BOT_TOKEN = os.environ['BOT_TOKEN']
 
 bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+dp = Dispatcher(storage=MemoryStorage())
 
 class UserState(StatesGroup):
     waiting_for_captcha = State()
@@ -116,5 +133,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    import asyncio
     asyncio.run(main())
